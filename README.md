@@ -125,3 +125,10 @@ Only sends Slack notification when status changes.
 - Brave Search free tier: 2,000 queries/day
 - Cron runs at 15:00 UTC (8:00 AM MST)
 - Topics are parsed from markdown (comments `<!-- -->` are ignored)
+
+---
+
+<p align="center">
+  Vibe coded by <a href="https://opencode.ai">OpenCode</a><br>
+  <sub>Powered by Big Pickle</sub>
+</p>
