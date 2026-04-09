@@ -8,13 +8,10 @@ Configure your daily monitoring topics below. Each topic will be checked for sta
 - bill_id: HB 2809
 - year: 2026
 
-## Example: RAM Prices (commented out)
-<!--
 ## DDR5 RAM Prices
 - type: product_price
 - product: DDR5 RAM 32GB
-- search: "DDR5 RAM prices 2026 site:newegg.com OR site:amazon.com"
--->
+- search: "DDR5 RAM 32GB DDR5 price"
 
 ## Example: Tech News (commented out)
 <!--
