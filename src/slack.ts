@@ -1,3 +1,5 @@
+import type { TopicStatus } from "./topics";
+
 export interface SlackBlock {
   type: string;
   text?: {
@@ -14,6 +16,36 @@ export interface SlackBlock {
 export interface SlackMessage {
   blocks: SlackBlock[];
 }
+
+const STATUS_EMOJI: Record<string, string> = {
+  MOVED: "🟢",
+  STALLED: "🔴",
+  "NEW INFO": "🟡",
+  "NO CHANGE": "⚪",
+  CHANGED: "🟡",
+  SAME: "⚪",
+  UP: "📈",
+  DOWN: "📉",
+  FLAT: "➡️",
+  NEW: "🆕",
+  UPDATE: "🔄",
+  UNKNOWN: "❓",
+};
+
+const STATUS_LABELS: Record<string, string> = {
+  MOVED: "MOVED",
+  STALLED: "STALLED",
+  "NEW INFO": "NEW INFO",
+  "NO CHANGE": "NO CHANGE",
+  CHANGED: "CHANGED",
+  SAME: "SAME",
+  UP: "PRICE UP",
+  DOWN: "PRICE DOWN",
+  FLAT: "FLAT",
+  NEW: "NEW",
+  UPDATE: "UPDATE",
+  UNKNOWN: "UNKNOWN",
+};
 
 export async function sendToSlack(
   webhookUrl: string,
@@ -40,24 +72,33 @@ export async function sendToSlack(
   }
 }
 
-export function formatDigestMessage(
+export function formatStatusChangeMessage(
   date: string,
-  results: Array<{ topic: string; summary: string; status: string }>
+  changes: TopicStatus[],
+  isInitial: boolean = false
 ): SlackMessage {
+  const headerText = isInitial
+    ? `📋 Initial Status Check - ${date}`
+    : `📋 Status Changes - ${date}`;
+
   const headerBlock: SlackBlock = {
     type: "header",
     text: {
       type: "plain_text",
-      text: `📋 Daily Digest - ${date}`,
+      text: headerText,
       emoji: true,
     },
   };
+
+  const introText = isInitial
+    ? `First status check completed for ${changes.length} topic(s).`
+    : `${changes.length} status change(s) detected.`;
 
   const introBlock: SlackBlock = {
     type: "section",
     text: {
       type: "mrkdwn",
-      text: `Good morning! Here's your daily update on ${results.length} topics.`,
+      text: introText,
     },
   };
 
@@ -65,27 +106,22 @@ export function formatDigestMessage(
     type: "divider",
   };
 
-  const resultBlocks: SlackBlock[] = results.flatMap((result) => [
-    {
+  const changeBlocks: SlackBlock[] = changes.map((change) => {
+    const emoji = STATUS_EMOJI[change.status] || "⚪";
+    const label = STATUS_LABELS[change.status] || change.status;
+
+    return {
       type: "section",
       text: {
         type: "mrkdwn",
-        text: `*${result.topic}*\n${result.summary}`,
+        text: `${emoji} *${change.topic}* - ${label}\n${change.message}`,
       },
-    } as SlackBlock,
-    {
-      type: "context",
-      elements: [
-        {
-          type: "mrkdwn",
-          text: `Status: ${result.status}`,
-        },
-      ],
-    } as SlackBlock,
-    {
-      type: "divider",
-    } as SlackBlock,
-  ]);
+    } as SlackBlock;
+  });
+
+  const dividerBeforeFooter: SlackBlock = {
+    type: "divider",
+  };
 
   const footerBlock: SlackBlock = {
     type: "context",
@@ -98,6 +134,40 @@ export function formatDigestMessage(
   };
 
   return {
-    blocks: [headerBlock, introBlock, dividerBlock, ...resultBlocks, footerBlock],
+    blocks: [headerBlock, introBlock, dividerBlock, ...changeBlocks, dividerBeforeFooter, footerBlock],
+  };
+}
+
+export function formatNoChangesMessage(date: string): SlackMessage {
+  return {
+    blocks: [
+      {
+        type: "header",
+        text: {
+          type: "plain_text",
+          text: `✅ No Changes - ${date}`,
+          emoji: true,
+        },
+      },
+      {
+        type: "section",
+        text: {
+          type: "mrkdwn",
+          text: "All topics checked - no status changes detected.",
+        },
+      },
+      {
+        type: "divider",
+      },
+      {
+        type: "context",
+        elements: [
+          {
+            type: "mrkdwn",
+            text: "Powered by Cloudflare Workers AI",
+          },
+        ],
+      },
+    ],
   };
 }

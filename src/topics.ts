@@ -11,10 +11,18 @@ export interface TopicConfig {
   [key: string]: string | number | undefined;
 }
 
-export interface TopicResult {
+export interface TopicStatus {
   topic: string;
-  summary: string;
   status: string;
+  message: string;
+  lastChecked: string;
+  timestamp: string;
+}
+
+export interface StatusCheckResult {
+  changed: boolean;
+  previousStatus: TopicStatus | null;
+  currentStatus: TopicStatus;
 }
 
 function parseTopicFromMarkdown(lines: string[], startIndex: number): TopicConfig | null {
@@ -92,6 +100,30 @@ export function parseTopics(markdown: string): TopicConfig[] {
   }
 
   return topics;
+}
+
+export async function getStoredStatus(
+  kv: KVNamespace,
+  topicName: string
+): Promise<TopicStatus | null> {
+  const key = `status:${topicName}`;
+  const stored = await kv.get(key);
+  if (stored) {
+    try {
+      return JSON.parse(stored) as TopicStatus;
+    } catch {
+      return null;
+    }
+  }
+  return null;
+}
+
+export async function setStoredStatus(
+  kv: KVNamespace,
+  status: TopicStatus
+): Promise<void> {
+  const key = `status:${status.topic}`;
+  await kv.put(key, JSON.stringify(status));
 }
 
 export async function fetchTopicData(

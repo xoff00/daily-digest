@@ -1,7 +1,7 @@
 import { Ai } from "@cloudflare/ai";
-import { parseTopics, fetchTopicData, TopicConfig, TopicResult } from "./topics";
-import { sendToSlack, formatDigestMessage } from "./slack";
-import { summarizeWithAI } from "./ai";
+import { parseTopics, fetchTopicData, getStoredStatus, setStoredStatus, TopicConfig, TopicStatus } from "./topics";
+import { sendToSlack, formatStatusChangeMessage, formatNoChangesMessage } from "./slack";
+import { getStatus } from "./ai";
 
 interface Env {
   AI: Ai;
@@ -13,58 +13,111 @@ interface Env {
   BRAVE_API_KEY: string;
 }
 
+function getDefaultTopics(): string {
+  return `# Daily Digest Topics
+
+## Arizona HB 2809
+- type: legislation
+- state: AZ
+- bill_id: HB 2809
+- year: 2026
+`;
+}
+
+async function processAllTopics(env: Env): Promise<{ changes: TopicStatus[]; isInitial: boolean }> {
+  const topicsMarkdown = await env.TOPICS?.get("topics_config") || getDefaultTopics();
+  const topics = parseTopics(topicsMarkdown);
+  
+  console.log(`Processing ${topics.length} topics`);
+
+  const changes: TopicStatus[] = [];
+  let isInitial = false;
+
+  for (const topic of topics) {
+    try {
+      console.log(`Checking status: ${topic.name}`);
+      const result = await checkTopicStatus(topic, env);
+      
+      if (result.changed) {
+        changes.push(result.currentStatus);
+        console.log(`Status changed: ${topic.name} -> ${result.currentStatus.status}`);
+      } else {
+        console.log(`No change: ${topic.name}`);
+      }
+
+      if (!result.previousStatus) {
+        isInitial = true;
+      }
+    } catch (error) {
+      console.error(`Error processing topic ${topic.name}:`, error);
+    }
+  }
+
+  return { changes, isInitial };
+}
+
+async function checkTopicStatus(
+  topic: TopicConfig,
+  env: Env
+): Promise<{ changed: boolean; previousStatus: TopicStatus | null; currentStatus: TopicStatus }> {
+  const { query, results: searchResults } = await fetchTopicData(topic, env);
+
+  const { status, message } = await getStatus(env.AI, topic.name, topic.type, searchResults);
+
+  const currentStatus: TopicStatus = {
+    topic: topic.name,
+    status,
+    message,
+    lastChecked: new Date().toISOString(),
+    timestamp: new Date().toISOString(),
+  };
+
+  const previousStatus = env.TOPICS ? await getStoredStatus(env.TOPICS, topic.name) : null;
+
+  let changed = false;
+  
+  if (!previousStatus) {
+    changed = true;
+  } else if (previousStatus.status !== currentStatus.status) {
+    changed = true;
+  }
+
+  if (env.TOPICS) {
+    await setStoredStatus(env.TOPICS, currentStatus);
+  }
+
+  return { changed, previousStatus, currentStatus };
+}
+
+async function sendDigest(webhookUrl: string, changes: TopicStatus[], isInitial: boolean): Promise<boolean> {
+  const today = new Date().toLocaleDateString("en-US", {
+    weekday: "long",
+    year: "numeric",
+    month: "long",
+    day: "numeric",
+  });
+
+  let message;
+  
+  if (changes.length === 0) {
+    message = formatNoChangesMessage(today);
+  } else {
+    message = formatStatusChangeMessage(today, changes, isInitial);
+  }
+
+  return await sendToSlack(webhookUrl, message);
+}
+
 export default {
   async scheduled(event: ScheduledEvent, env: Env, ctx: ExecutionContext): Promise<void> {
     console.log("Daily digest cron triggered at:", new Date().toISOString());
 
-    const webhookUrl = env.SLACK_WEBHOOK_URL;
-    const results: TopicResult[] = [];
-
-    const topicsMarkdown = await env.TOPICS?.get("topics_config") || getDefaultTopics();
-    const topics = parseTopics(topicsMarkdown);
-    console.log(`Processing ${topics.length} topics`);
-
-    for (const topic of topics) {
-      try {
-        console.log(`Processing topic: ${topic.name}`);
-        const { query, results: searchResults } = await fetchTopicData(topic, { AI: env.AI, BRAVE_API_KEY: env.BRAVE_API_KEY });
-
-        const summary = await summarizeWithAI(env.AI, {
-          topicName: topic.name,
-          searchQuery: query,
-          searchResults: searchResults,
-          summaryLength: topic.summary_length,
-        });
-
-        results.push({
-          topic: topic.name,
-          summary,
-          status: "Success",
-        });
-
-        console.log(`Completed: ${topic.name}`);
-      } catch (error) {
-        console.error(`Error processing topic ${topic.name}:`, error);
-        results.push({
-          topic: topic.name,
-          summary: "Failed to fetch summary. Check worker logs for details.",
-          status: "Error",
-        });
-      }
-    }
-
-    const today = new Date().toLocaleDateString("en-US", {
-      weekday: "long",
-      year: "numeric",
-      month: "long",
-      day: "numeric",
-    });
-
-    const message = formatDigestMessage(today, results);
-    const sent = await sendToSlack(webhookUrl, message);
+    const { changes, isInitial } = await processAllTopics(env);
+    
+    const sent = await sendDigest(env.SLACK_WEBHOOK_URL, changes, isInitial);
 
     if (sent) {
-      console.log("Digest sent to Slack successfully");
+      console.log(`Digest sent: ${changes.length} change(s), initial: ${isInitial}`);
     } else {
       console.error("Failed to send digest to Slack");
     }
@@ -89,68 +142,41 @@ export default {
     }
 
     if (new URL(request.url).pathname === "/run") {
-      const webhookUrl = env.SLACK_WEBHOOK_URL;
-      const results: TopicResult[] = [];
+      try {
+        const { changes, isInitial } = await processAllTopics(env);
+        const sent = await sendDigest(env.SLACK_WEBHOOK_URL, changes, isInitial);
 
-      const topicsMarkdown = await env.TOPICS?.get("topics_config") || getDefaultTopics();
-      const topics = parseTopics(topicsMarkdown);
-      console.log(`Processing ${topics.length} topics`);
-
-      for (const topic of topics) {
-        try {
-          console.log(`Processing topic: ${topic.name}`);
-          const { query, results: searchResults } = await fetchTopicData(topic, { AI: env.AI, BRAVE_API_KEY: env.BRAVE_API_KEY });
-
-          const summary = await summarizeWithAI(env.AI, {
-            topicName: topic.name,
-            searchQuery: query,
-            searchResults: searchResults,
-            summaryLength: topic.summary_length,
-          });
-
-          results.push({
-            topic: topic.name,
-            summary,
-            status: "Success",
-          });
-
-          console.log(`Completed: ${topic.name}`);
-        } catch (error) {
-          console.error(`Error processing topic ${topic.name}:`, error);
-          results.push({
-            topic: topic.name,
-            summary: "Failed to fetch summary. Check worker logs for details.",
-            status: "Error",
-          });
-        }
+        return new Response(JSON.stringify({ 
+          sent, 
+          changes,
+          isInitial,
+          summary: changes.length === 0 
+            ? "No changes detected" 
+            : `${changes.length} status change(s) detected`
+        }), {
+          headers: { "Content-Type": "application/json" },
+        });
+      } catch (error) {
+        console.error("Error in /run:", error);
+        return new Response(JSON.stringify({ error: "Processing failed" }), {
+          status: 500,
+          headers: { "Content-Type": "application/json" },
+        });
       }
-
-      const today = new Date().toLocaleDateString("en-US", {
-        weekday: "long",
-        year: "numeric",
-        month: "long",
-        day: "numeric",
-      });
-
-      const message = formatDigestMessage(today, results);
-      const sent = await sendToSlack(webhookUrl, message);
-
-      return new Response(JSON.stringify({ sent, results }), {
-        headers: { "Content-Type": "application/json" },
-      });
     }
 
     if (new URL(request.url).pathname === "/test") {
-      const webhookUrl = env.SLACK_WEBHOOK_URL;
-      const testMessage = formatDigestMessage("Test Message", [
+      const testChanges: TopicStatus[] = [
         {
           topic: "Test Topic",
-          summary: "This is a test message to verify your Slack integration is working correctly.",
-          status: "Test",
+          status: "MOVED",
+          message: "This is a test message to verify your Slack integration is working correctly.",
+          lastChecked: new Date().toISOString(),
+          timestamp: new Date().toISOString(),
         },
-      ]);
+      ];
 
-      const sent = await sendToSlack(webhookUrl, testMessage);
+      const sent = await sendDigest(env.SLACK_WEBHOOK_URL, testChanges, false);
       return new Response(JSON.stringify({ sent }), {
         headers: { "Content-Type": "application/json" },
       });
@@ -158,9 +184,9 @@ export default {
 
     return new Response(
       JSON.stringify({
-        message: "Daily Digest Worker",
+        message: "Daily Digest Worker - Status Tracker",
         endpoints: {
-          "GET /run": "Run digest with current topics (processes and sends to Slack)",
+          "GET /run": "Check all topics for status changes and send to Slack",
           "POST /update-topics": "Update topics config (requires JSON body with 'topics' field)",
           "GET /test": "Send a test message to Slack",
         },
@@ -171,15 +197,3 @@ export default {
     );
   },
 };
-
-function getDefaultTopics(): string {
-  return `# Daily Digest Topics
-
-## Arizona HB 2809
-- type: legislation
-- state: AZ
-- bill_id: HB 2809
-- year: 2026
-- summary_length: 3 sentences
-`;
-}
