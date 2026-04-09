@@ -1,6 +1,6 @@
 # Daily Digest Worker
 
-Cloudflare Worker that runs daily cron jobs to monitor topics and send AI summaries to Slack.
+Cloudflare Worker that runs daily cron jobs to monitor topics and send status updates to Slack when changes are detected.
 
 ## Setup
 
@@ -20,24 +20,28 @@ npx wrangler login
 npx wrangler kv:namespace create TOPICS
 ```
 
-Copy the KV namespace ID and replace `REPLACE_WITH_YOUR_KV_NAMESPACE_ID` in `wrangler.toml`.
+Copy the KV namespace ID and replace `id` in `wrangler.toml`.
 
 ### 3. Enable Workers AI
 
 In Cloudflare Dashboard:
 1. Go to Workers & Pages
-2. Select your worker (or create one)
+2. Select your worker
 3. Click on "AI" tab
 4. Enable Workers AI
 
-### 4. Configure Slack
+### 4. Configure Secrets
 
-1. Create a Slack webhook at https://api.slack.com/apps
-2. Set the webhook URL as a Cloudflare secret:
-   ```bash
-   npx wrangler secret put SLACK_WEBHOOK_URL
-   ```
-   (Enter your webhook URL when prompted)
+```bash
+# Slack webhook URL
+npx wrangler secret put SLACK_WEBHOOK_URL
+
+# Brave Search API key
+npx wrangler secret put BRAVE_API_KEY
+
+# Secret for /run endpoint authentication
+npx wrangler secret put RUN_SECRET
+```
 
 ### 5. Deploy
 
@@ -52,7 +56,6 @@ Edit `topics.md` to add/edit/remove topics:
 ```markdown
 ## Topic Name
 - type: legislation  # or: product_price, news, general
-- summary_length: 3  # sentences
 - search: optional custom search query
 # Type-specific fields:
 - state: AZ          # for legislation
@@ -69,15 +72,17 @@ After editing topics.md, either:
 ## Testing
 
 ```bash
-# Deploy to development
-npm run dev
-
-# Test Slack integration
+# Test Slack integration (no auth required)
 curl https://your-worker.workers.dev/test
+
+# Run digest with authentication
+curl "https://your-worker.workers.dev/run?key=YOUR_RUN_SECRET"
 
 # View logs
 npm run tail
 ```
+
+**Note:** The `/run` endpoint requires `?key=YOUR_RUN_SECRET` query parameter. The daily cron trigger does not require authentication.
 
 ## Cron Schedule
 
@@ -90,14 +95,15 @@ To change, edit `crons` in `wrangler.toml`:
 crons = ["0 15 * * *"]  # 3 PM UTC = 8 AM MST
 ```
 
-## Adding Search API (Optional)
+## Status Types
 
-The worker includes fallback content if no search API is configured.
+| Type | Status | Description |
+|------|--------|-------------|
+| Legislation | MOVED, STALLED, NEW INFO, NO CHANGE | Bill progress |
+| Product Price | UP, DOWN, FLAT, NEW | Price changes |
+| News | NEW, UPDATE, SAME | News developments |
 
-For live search results, add Brave Search API:
-1. Get API key at https://brave.com/search/api/
-2. Uncomment the search code in `src/topics.ts`
-3. Add your API key to the headers
+Only sends Slack notification when status changes.
 
 ## Project Structure
 
@@ -106,7 +112,7 @@ For live search results, add Brave Search API:
 ├── src/
 │   ├── index.ts      # Worker entry point, cron handler
 │   ├── slack.ts      # Slack message formatting & delivery
-│   ├── ai.ts         # Workers AI summarization
+│   ├── ai.ts         # Workers AI status analysis
 │   └── topics.ts     # Topic parsing & data fetching
 ├── topics.md         # Editable topic configuration
 ├── wrangler.toml     # Worker config with cron trigger
@@ -116,5 +122,6 @@ For live search results, add Brave Search API:
 ## Notes
 
 - Workers AI free tier: 10,000 neurons/day
+- Brave Search free tier: 2,000 queries/day
 - Cron runs at 15:00 UTC (8:00 AM MST)
 - Topics are parsed from markdown (comments `<!-- -->` are ignored)

@@ -11,6 +11,7 @@ interface Env {
   };
   SLACK_WEBHOOK_URL: string;
   BRAVE_API_KEY: string;
+  RUN_SECRET: string;
 }
 
 function getDefaultTopics(): string {
@@ -142,6 +143,11 @@ export default {
     }
 
     if (new URL(request.url).pathname === "/run") {
+      const url = new URL(request.url);
+      if (url.searchParams.get("key") !== env.RUN_SECRET) {
+        return new Response("Unauthorized", { status: 401 });
+      }
+
       try {
         const { changes, isInitial } = await processAllTopics(env);
         const sent = await sendDigest(env.SLACK_WEBHOOK_URL, changes, isInitial);
