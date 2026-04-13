@@ -19,11 +19,8 @@ export async function getStatus(
     },
     body: JSON.stringify({
       model: "brave",
+      stream: false,
       messages: [
-        {
-          role: "system",
-          content: "You analyze topics and output a short status update. Follow the format exactly. Be concise and factual.",
-        },
         {
           role: "user",
           content: prompt,
@@ -145,6 +142,7 @@ Generate ONLY the search query, nothing else. Make it specific to current status
     },
     body: JSON.stringify({
       model: "brave",
+      stream: false,
       messages: [{ role: "user", content: prompt }],
       max_tokens: 128,
     }),
