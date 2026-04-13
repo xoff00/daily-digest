@@ -2,69 +2,59 @@
 
 ## Project Overview
 
-Cloudflare Worker that runs daily cron jobs to monitor topics and send status updates to Slack when changes are detected.
+Simple daily digest that monitors topics and sends Slack notifications on changes.
 
-## Tech Stack
+## Architecture
 
-- **Runtime**: Cloudflare Workers (TypeScript)
-- **AI**: @cloudflare/ai (Workers AI)
-- **Search**: Brave Search API
-- **Notifications**: Slack webhooks
-- **Build**: Wrangler v4
+```
+Cron → OpenCode → Slack
+```
 
-## Commands
+No external APIs needed (OpenCode searches the web directly).
+
+## Setup
 
 ```bash
-npm install       # Install dependencies
-npm run dev       # Local development
-npm run deploy    # Deploy to Cloudflare
-npm run tail      # View live logs
+# 1. Copy and configure environment
+cp .env.example .env
+# Edit .env with your Slack webhook
+
+# 2. Make run script executable
+chmod +x run.sh
+
+# 3. Setup cron (daily at 8 AM)
+crontab -e
+0 8 * * * /path/to/run.sh
 ```
 
-## Code Conventions
+## Files
 
-- **Language**: TypeScript with strict mode enabled
-- **Module system**: ESNext modules
-- **Target**: ES2022
-- **Type checking**: All Cloudflare bindings (AI, KV, secrets) must be declared in the `Env` interface in `src/index.ts`
-- **Error handling**: Use try/catch with console.error for logging
-- **Async**: All handlers use async/await
+| File | Purpose |
+|------|---------|
+| `topics.md` | Topics to monitor |
+| `status.json` | Previous status (auto-created) |
+| `.env` | Slack webhook URL |
+| `run.sh` | Cron trigger script |
 
-## Project Structure
+## Topic Format
 
+```markdown
+## Topic Name
+- type: legislation | product_price | news
+- state: AZ (for legislation)
+- bill_id: HB 2809 (for legislation)
+- product: DDR5 RAM (for product_price)
+- topic: AI news (for news)
 ```
-src/
-├── index.ts   # Worker entry point, cron handler, HTTP endpoints
-├── slack.ts   # Slack message formatting & delivery
-├── ai.ts      # Workers AI status analysis
-└── topics.ts  # Topic parsing & data fetching
-topics.md      # Editable topic configuration
-wrangler.toml  # Worker config with cron trigger
-```
-
-## Important Patterns
-
-- Secrets are injected via `npx wrangler secret put <NAME>`
-- KV namespace bindings are configured in `wrangler.toml`
-- Topics are parsed from markdown (HTML comments `<!-- -->` are ignored)
-- Status changes are stored in KV and compared on each run
-- Only notify Slack when status actually changes
 
 ## Status Types
 
 | Type | Status | Description |
 |------|--------|-------------|
 | Legislation | MOVED, STALLED, NEW INFO, NO CHANGE | Bill progress |
-| Product Price | UP, DOWN, FLAT, NEW | Price changes |
+| Product Price | UP, DOWN, FLAT | Price changes |
 | News | NEW, UPDATE, SAME | News developments |
 
-## Endpoints
+## Slack Webhook
 
-- `GET /` - Health check
-- `GET /test` - Send test message to Slack
-- `GET /run?key=<RUN_SECRET>` - Manual trigger
-- `POST /update-topics` - Update topics config (JSON body with `topics` field)
-
-## Cron Schedule
-
-Daily at 15:00 UTC (8:00 AM MST). Edit `crons` in `wrangler.toml` to change.
+Get one at: https://api.slack.com/messaging/webhooks

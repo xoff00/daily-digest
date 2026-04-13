@@ -9,6 +9,7 @@ dist/
 .env
 .env.*
 *.local
+status.json
 
 # IDE
 .idea/
