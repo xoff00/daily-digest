@@ -128,7 +128,7 @@ export async function setStoredStatus(
 
 export async function fetchTopicData(
   topic: TopicConfig,
-  env: { AI: Ai; BRAVE_API_KEY: string } & { TOPICS?: { get: (key: string) => Promise<string | null> } }
+  env: { BRAVE_API_KEY: string }
 ): Promise<{ query: string; results: string }> {
   let searchQuery = topic.search;
 

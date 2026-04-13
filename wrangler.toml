@@ -8,6 +8,3 @@ crons = ["0 15 * * *"]
 [[kv_namespaces]]
 binding = "TOPICS"
 id = "d25acad592b44cbc9b8160abcd5dad32"
-
-[ai]
-binding = "AI"

@@ -1,34 +1,45 @@
-import { Ai } from "@cloudflare/ai";
-
 export interface StatusResult {
   status: string;
   message: string;
 }
 
 export async function getStatus(
-  ai: Ai,
+  braveAnswersApiKey: string,
   topicName: string,
   topicType: string,
   searchResults: string
 ): Promise<StatusResult> {
   const prompt = buildStatusPrompt(topicType, topicName, searchResults);
 
-  const response = await ai.run("@cf/meta/llama-3.1-8b-instruct", {
-    messages: [
-      {
-        role: "system",
-        content:
-          "You analyze topics and output a short status update. Follow the format exactly. Be concise and factual.",
-      },
-      {
-        role: "user",
-        content: prompt,
-      },
-    ],
-    max_tokens: 256,
+  const response = await fetch("https://api.search.brave.com/res/v1/chat/completions", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "Authorization": `Bearer ${braveAnswersApiKey}`,
+    },
+    body: JSON.stringify({
+      model: "brave",
+      messages: [
+        {
+          role: "system",
+          content: "You analyze topics and output a short status update. Follow the format exactly. Be concise and factual.",
+        },
+        {
+          role: "user",
+          content: prompt,
+        },
+      ],
+      max_tokens: 256,
+    }),
   });
 
-  const result = (response as { response: string }).response.trim();
+  if (!response.ok) {
+    console.error("Brave Answers API error:", response.status, await response.text());
+    return { status: "UNKNOWN", message: "Failed to get status from Brave Answers" };
+  }
+
+  const data = await response.json() as { choices?: Array<{ message?: { content?: string } }> };
+  const result = data.choices?.[0]?.message?.content?.trim() || "";
   return parseStatusResponse(result, topicType);
 }
 
@@ -111,7 +122,7 @@ function parseStatusResponse(response: string, topicType: string): StatusResult 
 }
 
 export async function generateSearchQuery(
-  ai: Ai,
+  braveAnswersApiKey: string,
   topicName: string,
   topicType: string,
   details?: Record<string, string>
@@ -126,17 +137,26 @@ DETAILS: ${context}
 
 Generate ONLY the search query, nothing else. Make it specific to current status.`;
 
-  const response = await ai.run("@cf/meta/llama-3.1-8b-instruct", {
-    messages: [
-      {
-        role: "user",
-        content: prompt,
-      },
-    ],
-    max_tokens: 128,
+  const response = await fetch("https://api.search.brave.com/res/v1/chat/completions", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "Authorization": `Bearer ${braveAnswersApiKey}`,
+    },
+    body: JSON.stringify({
+      model: "brave",
+      messages: [{ role: "user", content: prompt }],
+      max_tokens: 128,
+    }),
   });
 
-  return (response as { response: string }).response.trim();
+  if (!response.ok) {
+    console.error("Brave Answers API error:", response.status, await response.text());
+    return `${topicName} status`;
+  }
+
+  const data = await response.json() as { choices?: Array<{ message?: { content?: string } }> };
+  return data.choices?.[0]?.message?.content?.trim() || `${topicName} status`;
 }
 
 function getTopicContext(

@@ -1,16 +1,15 @@
-import { Ai } from "@cloudflare/ai";
 import { parseTopics, fetchTopicData, getStoredStatus, setStoredStatus, TopicConfig, TopicStatus } from "./topics";
 import { sendToSlack, formatStatusChangeMessage, formatNoChangesMessage } from "./slack";
 import { getStatus } from "./ai";
 
 interface Env {
-  AI: Ai;
   TOPICS?: {
     get: (key: string) => Promise<string | null>;
     put: (key: string, value: string) => Promise<void>;
   };
   SLACK_WEBHOOK_URL: string;
   BRAVE_API_KEY: string;
+  BRAVE_ANSWERS_API_KEY: string;
   RUN_SECRET: string;
 }
 
@@ -63,7 +62,7 @@ async function checkTopicStatus(
 ): Promise<{ changed: boolean; previousStatus: TopicStatus | null; currentStatus: TopicStatus }> {
   const { query, results: searchResults } = await fetchTopicData(topic, env);
 
-  const { status, message } = await getStatus(env.AI, topic.name, topic.type, searchResults);
+  const { status, message } = await getStatus(env.BRAVE_ANSWERS_API_KEY, topic.name, topic.type, searchResults);
 
   const currentStatus: TopicStatus = {
     topic: topic.name,

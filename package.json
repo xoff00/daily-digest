@@ -12,7 +12,5 @@
     "typescript": "^5.7.2",
     "wrangler": "^4.81.1"
   },
-  "dependencies": {
-    "@cloudflare/ai": "^1.2.2"
-  }
+  "dependencies": {}
 }
