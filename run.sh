@@ -29,4 +29,5 @@ IMPORTANT GUIDELINES:
 - Be careful with tracker UIs: Checkboxes, status badges, and visual indicators may not reflect actual current status. Always verify with action dates and primary sources.
 - For prices: Compare specific price points, not just trend direction.
 - Note the date of the most recent action or data in your analysis.
-- If sources conflict, prefer primary sources over aggregators."
+- If sources conflict, prefer primary sources over aggregators.
+- Status reflects CURRENT state, not history. If no new developments today, status should be NO CHANGE (or FLAT for prices). The previous status from status.json is only used to detect changes."
