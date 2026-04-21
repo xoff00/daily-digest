@@ -14,11 +14,11 @@ function getDefaultPrompts(): string {
   return `# Daily Digest Prompts
 
 ## DDR5 RAM Prices
-- query: Describe in a single short sentence the status of DDR5 prices over the last 24 hours.
+- query: Reply in exactly one sentence, 25 words or fewer, with no preamble: what changed in DDR5 RAM prices over the last 24 hours?
 - topic: DDR5 RAM
 
 ## Arizona HB 2809
-- query: Describe in a single short sentence the status of Arizona bill HB 2809 over the last week.
+- query: Reply in exactly one sentence, 25 words or fewer, with no preamble: what changed with Arizona bill HB 2809 over the last week?
 - topic: AZ HB 2809
 `;
 }
@@ -47,7 +47,7 @@ async function getPromptMarkdown(env: Env): Promise<string> {
 }
 
 async function runPrompt(prompt: PromptConfig, env: Env): Promise<PromptResult> {
-  const answer = await getAnswer(env.BRAVE_ANSWERS_API_KEY, prompt.query, 256);
+  const answer = await getAnswer(env.BRAVE_ANSWERS_API_KEY, prompt.query, 384);
   const result: PromptResult = {
     topic: prompt.topic || prompt.name,
     result: answer,
