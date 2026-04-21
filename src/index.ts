@@ -1,138 +1,135 @@
-import { parseTopics, fetchTopicData, getStoredStatus, setStoredStatus, TopicConfig, TopicStatus } from "./topics";
-import { sendToSlack, formatStatusChangeMessage, formatNoChangesMessage } from "./slack";
-import { getStatus } from "./ai";
+import { parsePrompts, getStoredResult, setStoredResult } from "./prompts";
+import type { PromptConfig, PromptResult } from "./prompts";
+import { sendToSlack, formatPromptDigestMessage } from "./slack";
+import { getAnswer } from "./ai";
 
 interface Env {
-  TOPICS?: {
-    get: (key: string) => Promise<string | null>;
-    put: (key: string, value: string) => Promise<void>;
-  };
+  TOPICS?: KVNamespace;
   SLACK_WEBHOOK_URL: string;
-  BRAVE_API_KEY: string;
   BRAVE_ANSWERS_API_KEY: string;
-  RUN_SECRET: string;
+  API_KEY: string;
 }
 
-function getDefaultTopics(): string {
-  return `# Daily Digest Topics
+function getDefaultPrompts(): string {
+  return `# Daily Digest Prompts
+
+## DDR5 RAM Prices
+- query: Describe in a single short sentence the status of DDR5 prices over the last 24 hours.
+- topic: DDR5 RAM
 
 ## Arizona HB 2809
-- type: legislation
-- state: AZ
-- bill_id: HB 2809
-- year: 2026
+- query: Describe in a single short sentence the status of Arizona bill HB 2809 over the last week.
+- topic: AZ HB 2809
 `;
 }
 
-async function processAllTopics(env: Env): Promise<{ changes: TopicStatus[]; isInitial: boolean }> {
-  const topicsMarkdown = await env.TOPICS?.get("topics_config") || getDefaultTopics();
-  const topics = parseTopics(topicsMarkdown);
-  
-  console.log(`Processing ${topics.length} topics`);
-
-  const changes: TopicStatus[] = [];
-  let isInitial = false;
-
-  for (const topic of topics) {
-    try {
-      console.log(`Checking status: ${topic.name}`);
-      const result = await checkTopicStatus(topic, env);
-      
-      if (result.changed) {
-        changes.push(result.currentStatus);
-        console.log(`Status changed: ${topic.name} -> ${result.currentStatus.status}`);
-      } else {
-        console.log(`No change: ${topic.name}`);
-      }
-
-      if (!result.previousStatus) {
-        isInitial = true;
-      }
-    } catch (error) {
-      console.error(`Error processing topic ${topic.name}:`, error);
-    }
-  }
-
-  return { changes, isInitial };
-}
-
-async function checkTopicStatus(
-  topic: TopicConfig,
-  env: Env
-): Promise<{ changed: boolean; previousStatus: TopicStatus | null; currentStatus: TopicStatus }> {
-  const { query, results: searchResults } = await fetchTopicData(topic, env);
-
-  const { status, message } = await getStatus(env.BRAVE_ANSWERS_API_KEY, topic.name, topic.type, searchResults);
-
-  const currentStatus: TopicStatus = {
-    topic: topic.name,
-    status,
-    message,
-    lastChecked: new Date().toISOString(),
-    timestamp: new Date().toISOString(),
-  };
-
-  const previousStatus = env.TOPICS ? await getStoredStatus(env.TOPICS, topic.name) : null;
-
-  let changed = false;
-  
-  if (!previousStatus) {
-    changed = true;
-  } else if (previousStatus.status !== currentStatus.status) {
-    changed = true;
-  }
-
-  if (env.TOPICS) {
-    await setStoredStatus(env.TOPICS, currentStatus);
-  }
-
-  return { changed, previousStatus, currentStatus };
-}
-
-async function sendDigest(webhookUrl: string, changes: TopicStatus[], isInitial: boolean): Promise<boolean> {
-  const today = new Date().toLocaleDateString("en-US", {
+function getTodayLabel(): string {
+  return new Date().toLocaleDateString("en-US", {
     weekday: "long",
     year: "numeric",
     month: "long",
     day: "numeric",
   });
+}
 
-  let message;
-  
-  if (changes.length === 0) {
-    message = formatNoChangesMessage(today);
-  } else {
-    message = formatStatusChangeMessage(today, changes, isInitial);
+function normalizeAnswer(answer: string): string {
+  return answer.replace(/\s+/g, " ").trim();
+}
+
+function isAuthorized(request: Request, env: Env): boolean {
+  const url = new URL(request.url);
+  const providedKey = request.headers.get("x-api-key") || url.searchParams.get("key");
+  return Boolean(providedKey && providedKey === env.API_KEY);
+}
+
+async function getPromptMarkdown(env: Env): Promise<string> {
+  return await env.TOPICS?.get("prompts_config") || getDefaultPrompts();
+}
+
+async function runPrompt(prompt: PromptConfig, env: Env): Promise<PromptResult> {
+  const answer = await getAnswer(env.BRAVE_ANSWERS_API_KEY, prompt.query, 256);
+  const result: PromptResult = {
+    topic: prompt.topic || prompt.name,
+    result: answer,
+    timestamp: new Date().toISOString(),
+  };
+
+  if (env.TOPICS) {
+    const previous = await getStoredResult(env.TOPICS, result.topic);
+    const normalized = normalizeAnswer(result.result);
+    const previousNormalized = previous ? normalizeAnswer(previous.result) : "";
+
+    if (!previous || previousNormalized !== normalized) {
+      console.log(`Answer changed for ${result.topic}`);
+    } else {
+      console.log(`Answer unchanged for ${result.topic}`);
+    }
+
+    await setStoredResult(env.TOPICS, result);
   }
 
-  return await sendToSlack(webhookUrl, message);
+  return result;
+}
+
+async function processAllPrompts(env: Env): Promise<PromptResult[]> {
+  const promptsMarkdown = await getPromptMarkdown(env);
+  const prompts = parsePrompts(promptsMarkdown);
+
+  console.log(`Processing ${prompts.length} prompt(s)`);
+
+  const results: PromptResult[] = [];
+
+  for (const prompt of prompts) {
+    try {
+      console.log(`Running prompt: ${prompt.name}`);
+      results.push(await runPrompt(prompt, env));
+    } catch (error) {
+      console.error(`Error processing prompt ${prompt.name}:`, error);
+    }
+  }
+
+  return results;
+}
+
+async function sendPromptDigest(webhookUrl: string, results: PromptResult[]): Promise<boolean> {
+  return await sendToSlack(webhookUrl, formatPromptDigestMessage(getTodayLabel(), results));
 }
 
 export default {
   async scheduled(event: ScheduledEvent, env: Env, ctx: ExecutionContext): Promise<void> {
     console.log("Daily digest cron triggered at:", new Date().toISOString());
 
-    const { changes, isInitial } = await processAllTopics(env);
-    
-    const sent = await sendDigest(env.SLACK_WEBHOOK_URL, changes, isInitial);
+    const results = await processAllPrompts(env);
+    const sent = await sendPromptDigest(env.SLACK_WEBHOOK_URL, results);
 
     if (sent) {
-      console.log(`Digest sent: ${changes.length} change(s), initial: ${isInitial}`);
+      console.log(`Digest sent: ${results.length} prompt result(s)`);
     } else {
       console.error("Failed to send digest to Slack");
     }
   },
 
   async fetch(request: Request, env: Env): Promise<Response> {
-    if (request.method === "POST" && new URL(request.url).pathname === "/update-topics") {
+    if (!isAuthorized(request, env)) {
+      return new Response("Unauthorized", { status: 401 });
+    }
+
+    const url = new URL(request.url);
+
+    if (request.method === "POST" && url.pathname === "/update-prompts") {
       try {
-        const body = await request.json() as { topics?: string };
-        if (body.topics && env.TOPICS) {
-          await env.TOPICS.put("topics_config", body.topics);
-          return new Response(JSON.stringify({ success: true, message: "Topics updated" }), {
+        const body = await request.json() as { prompts?: string };
+        if (body.prompts && env.TOPICS) {
+          await env.TOPICS.put("prompts_config", body.prompts);
+          return new Response(JSON.stringify({ success: true, message: "Prompts updated" }), {
             headers: { "Content-Type": "application/json" },
           });
         }
+
+        return new Response(JSON.stringify({ error: "Missing prompts field" }), {
+          status: 400,
+          headers: { "Content-Type": "application/json" },
+        });
       } catch {
         return new Response(JSON.stringify({ error: "Invalid request body" }), {
           status: 400,
@@ -141,23 +138,15 @@ export default {
       }
     }
 
-    if (new URL(request.url).pathname === "/run") {
-      const url = new URL(request.url);
-      if (url.searchParams.get("key") !== env.RUN_SECRET) {
-        return new Response("Unauthorized", { status: 401 });
-      }
-
+    if (url.pathname === "/run") {
       try {
-        const { changes, isInitial } = await processAllTopics(env);
-        const sent = await sendDigest(env.SLACK_WEBHOOK_URL, changes, isInitial);
+        const results = await processAllPrompts(env);
+        const sent = await sendPromptDigest(env.SLACK_WEBHOOK_URL, results);
 
-        return new Response(JSON.stringify({ 
-          sent, 
-          changes,
-          isInitial,
-          summary: changes.length === 0 
-            ? "No changes detected" 
-            : `${changes.length} status change(s) detected`
+        return new Response(JSON.stringify({
+          sent,
+          results,
+          summary: `${results.length} prompt result(s) sent`,
         }), {
           headers: { "Content-Type": "application/json" },
         });
@@ -170,30 +159,35 @@ export default {
       }
     }
 
-    if (new URL(request.url).pathname === "/test") {
-      const testChanges: TopicStatus[] = [
+    if (url.pathname === "/test") {
+      const testResults: PromptResult[] = [
         {
-          topic: "Test Topic",
-          status: "MOVED",
-          message: "This is a test message to verify your Slack integration is working correctly.",
-          lastChecked: new Date().toISOString(),
+          topic: "Test Prompt",
+          result: "This is a test Brave Answers response to verify your Slack integration is working correctly.",
           timestamp: new Date().toISOString(),
         },
       ];
 
-      const sent = await sendDigest(env.SLACK_WEBHOOK_URL, testChanges, false);
+      const sent = await sendPromptDigest(env.SLACK_WEBHOOK_URL, testResults);
       return new Response(JSON.stringify({ sent }), {
+        headers: { "Content-Type": "application/json" },
+      });
+    }
+
+    if (url.pathname === "/prompts") {
+      return new Response(JSON.stringify({ prompts: await getPromptMarkdown(env) }), {
         headers: { "Content-Type": "application/json" },
       });
     }
 
     return new Response(
       JSON.stringify({
-        message: "Daily Digest Worker - Status Tracker",
+        message: "Daily Digest Worker - Brave Answers Prompt Runner",
         endpoints: {
-          "GET /run": "Check all topics for status changes and send to Slack",
-          "POST /update-topics": "Update topics config (requires JSON body with 'topics' field)",
-          "GET /test": "Send a test message to Slack",
+          "GET /run": "Run all configured prompts and send the daily Slack digest",
+          "GET /prompts": "Show the active prompt markdown",
+          "POST /update-prompts": "Update prompt config (requires JSON body with 'prompts' field)",
+          "GET /test": "Send a test prompt digest to Slack",
         },
       }),
       {

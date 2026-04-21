@@ -1,6 +1,6 @@
 # Daily Digest Worker
 
-Cloudflare Worker that runs daily cron jobs to monitor topics and send status updates to Slack when changes are detected.
+Cloudflare Worker that runs daily cron jobs, sends configured Brave Answers prompts, and posts the latest answers to Slack.
 
 ## Setup
 
@@ -16,73 +16,68 @@ npm install
 # Login to Cloudflare
 npx wrangler login
 
-# Create KV namespace for topics storage
+# Create KV namespace for prompt config and stored results
 npx wrangler kv:namespace create TOPICS
 ```
 
 Copy the KV namespace ID and replace `id` in `wrangler.toml`.
 
-### 3. Enable Workers AI
-
-In Cloudflare Dashboard:
-1. Go to Workers & Pages
-2. Select your worker
-3. Click on "AI" tab
-4. Enable Workers AI
-
-### 4. Configure Secrets
+### 3. Configure Secrets
 
 ```bash
 # Slack webhook URL
 npx wrangler secret put SLACK_WEBHOOK_URL
 
-# Brave Search API key
-npx wrangler secret put BRAVE_API_KEY
+# Brave Answers API key
+npx wrangler secret put BRAVE_ANSWERS_API_KEY
 
-# Secret for /run endpoint authentication
-npx wrangler secret put RUN_SECRET
+# Shared API key for all HTTP endpoints
+npx wrangler secret put API_KEY
 ```
 
-### 5. Deploy
+### 4. Deploy
 
 ```bash
 npm run deploy
 ```
 
-## Configuration
+## Prompt Configuration
 
-Edit `topics.md` to add/edit/remove topics:
+Edit `prompts.md` to add/edit/remove Brave Answers prompts:
 
 ```markdown
-## Topic Name
-- type: legislation  # or: product_price, news, general
-- search: optional custom search query
-# Type-specific fields:
-- state: AZ          # for legislation
-- bill_id: HB 2809   # for legislation
-- year: 2026         # for legislation
-- product: DDR5 RAM  # for product_price
-- topic: AI news     # for news
+## Prompt Name
+- query: Describe in a single short sentence the status of DDR5 prices over the last 24 hours.
+- topic: DDR5 RAM
 ```
 
-After editing topics.md, either:
-- Wait for next cron run, OR
-- Push to KV: `POST /update-topics` with `{"topics": "...markdown..."}`
+After editing `prompts.md`, push it to KV with `POST /update-prompts` and a JSON body containing `prompts`.
+
+All HTTP endpoints require an API key. Pass it either as the `x-api-key` header or `?key=` query parameter.
 
 ## Testing
 
 ```bash
-# Test Slack integration (no auth required)
-curl https://your-worker.workers.dev/test
+# Test Slack integration
+curl -H "x-api-key: YOUR_API_KEY" https://your-worker.workers.dev/test
 
-# Run digest with authentication
-curl "https://your-worker.workers.dev/run?key=YOUR_RUN_SECRET"
+# Run the daily prompt digest manually
+curl -H "x-api-key: YOUR_API_KEY" https://your-worker.workers.dev/run
+
+# Inspect the active prompt config
+curl -H "x-api-key: YOUR_API_KEY" https://your-worker.workers.dev/prompts
+
+# Update the stored prompt config
+curl -X POST https://your-worker.workers.dev/update-prompts \
+  -H "Content-Type: application/json" \
+  -H "x-api-key: YOUR_API_KEY" \
+  --data '{"prompts":"# Daily Digest Prompts\n\n## Example\n- query: Give me one short sentence about Arizona housing policy news today.\n- topic: Arizona Housing"}'
 
 # View logs
 npm run tail
 ```
 
-**Note:** The `/run` endpoint requires `?key=YOUR_RUN_SECRET` query parameter. The daily cron trigger does not require authentication.
+**Note:** The daily cron trigger calls `scheduled()` internally and does not require an API key. Every HTTP endpoint does.
 
 ## Cron Schedule
 
@@ -95,15 +90,11 @@ To change, edit `crons` in `wrangler.toml`:
 crons = ["0 15 * * *"]  # 3 PM UTC = 8 AM MST
 ```
 
-## Status Types
+## Runtime Behavior
 
-| Type | Status | Description |
-|------|--------|-------------|
-| Legislation | MOVED, STALLED, NEW INFO, NO CHANGE | Bill progress |
-| Product Price | UP, DOWN, FLAT, NEW | Price changes |
-| News | NEW, UPDATE, SAME | News developments |
-
-Only sends Slack notification when status changes.
+- Runs each configured prompt once per day from the Worker cron trigger
+- Sends the latest answer for every configured prompt to Slack
+- Stores the latest result for each prompt in KV for inspection and future comparisons
 
 ## Project Structure
 
@@ -112,19 +103,18 @@ Only sends Slack notification when status changes.
 ├── src/
 │   ├── index.ts      # Worker entry point, cron handler
 │   ├── slack.ts      # Slack message formatting & delivery
-│   ├── ai.ts         # Workers AI status analysis
-│   └── topics.ts     # Topic parsing & data fetching
-├── topics.md         # Editable topic configuration
+│   ├── ai.ts         # Brave Answers API helpers
+│   └── prompts.ts    # Prompt parsing & result storage
+├── prompts.md        # Editable prompt configuration
 ├── wrangler.toml     # Worker config with cron trigger
 └── package.json
 ```
 
 ## Notes
 
-- Workers AI free tier: 10,000 neurons/day
-- Brave Search free tier: 2,000 queries/day
+- Brave Answers requests are driven by `prompts.md` or the stored `prompts_config` KV value
 - Cron runs at 15:00 UTC (8:00 AM MST)
-- Topics are parsed from markdown (comments `<!-- -->` are ignored)
+- Prompts are parsed from markdown (comments `<!-- -->` are ignored)
 
 ---
 

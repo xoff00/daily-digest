@@ -1,0 +1,3 @@
+SLACK_WEBHOOK_URL="your-slack-webhook-url"
+BRAVE_ANSWERS_API_KEY="your-brave-answers-api-key"
+API_KEY="replace-with-a-random-shared-key"
