@@ -122,3 +122,5 @@ crons = ["0 15 * * *"]  # 3 PM UTC = 8 AM MST
 - Active prompts come from KV key `prompts_config` when present, otherwise from bundled `prompts.md`
 - Cron runs at 15:00 UTC (8:00 AM MST)
 - Prompts are parsed from markdown (comments `<!-- -->` are ignored)
+
+Vibe coded by OpenCode with Big Pickle and ChatGPT
