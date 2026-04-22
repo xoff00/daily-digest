@@ -47,7 +47,7 @@ Edit `prompts.md` to add/edit/remove Brave Answers prompts:
 
 ```markdown
 ## Prompt Name
-- query: Describe in a single short sentence the status of DDR5 prices over the last 24 hours.
+- query: Reply in exactly one sentence, 25 words or fewer, with no preamble: what changed in DDR5 RAM prices over the last 24 hours?
 - topic: DDR5 RAM
 ```
 
@@ -95,6 +95,7 @@ crons = ["0 15 * * *"]  # 3 PM UTC = 8 AM MST
 - Runs each configured prompt once per day from the Worker cron trigger
 - Sends the latest answer for every configured prompt to Slack
 - Stores the latest result for each prompt in KV for inspection and future comparisons
+- All HTTP endpoints require `API_KEY`; only the scheduled cron trigger is unauthenticated
 
 ## Project Structure
 
@@ -106,6 +107,7 @@ crons = ["0 15 * * *"]  # 3 PM UTC = 8 AM MST
 │   ├── ai.ts         # Brave Answers API helpers
 │   └── prompts.ts    # Prompt parsing & result storage
 ├── prompts.md        # Editable prompt configuration
+├── .dev.vars.example # Local secret template (not committed as live secrets)
 ├── wrangler.toml     # Worker config with cron trigger
 └── package.json
 ```

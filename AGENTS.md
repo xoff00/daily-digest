@@ -2,58 +2,58 @@
 
 ## Project Overview
 
-Simple daily digest that monitors topics and sends Slack notifications on changes.
+Cloudflare Worker that runs a daily prompt-driven digest and sends Brave Answers summaries to Slack.
 
 ## Architecture
 
 ```
-Cron → OpenCode → Slack
+Cloudflare Cron → Worker → Brave Answers → Slack
 ```
 
-No external APIs needed (OpenCode searches the web directly).
+Prompt definitions are stored in KV with a bundled `prompts.md` fallback.
 
 ## Setup
 
 ```bash
-# 1. Copy and configure environment
-cp .env.example .env
-# Edit .env with your Slack webhook
+# 1. Install dependencies
+npm install
 
-# 2. Make run script executable
-chmod +x run.sh
+# 2. Log in and create KV
+npx wrangler login
+npx wrangler kv:namespace create TOPICS
 
-# 3. Setup cron (daily at 8 AM)
-crontab -e
-0 8 * * * /path/to/run.sh
+# 3. Configure Worker secrets
+npx wrangler secret put SLACK_WEBHOOK_URL
+npx wrangler secret put BRAVE_ANSWERS_API_KEY
+npx wrangler secret put API_KEY
+
+# 4. Deploy
+npx wrangler deploy
 ```
 
 ## Files
 
 | File | Purpose |
 |------|---------|
-| `topics.md` | Topics to monitor |
-| `status.json` | Previous status (auto-created) |
-| `.env` | Slack webhook URL |
-| `run.sh` | Cron trigger script |
+| `prompts.md` | Default prompt configuration |
+| `src/index.ts` | Worker cron and HTTP handlers |
+| `src/prompts.ts` | Prompt parsing and KV result storage |
+| `wrangler.toml` | Worker name, cron, and bindings |
 
-## Topic Format
+## Prompt Format
 
 ```markdown
-## Topic Name
-- type: legislation | product_price | news
-- state: AZ (for legislation)
-- bill_id: HB 2809 (for legislation)
-- product: DDR5 RAM (for product_price)
-- topic: AI news (for news)
+## Prompt Name
+- query: Reply in exactly one sentence, 25 words or fewer, with no preamble: what changed in DDR5 RAM prices over the last 24 hours?
+- topic: DDR5 RAM
 ```
 
-## Status Types
+## Endpoints
 
-| Type | Status | Description |
-|------|--------|-------------|
-| Legislation | MOVED, STALLED, NEW INFO, NO CHANGE | Bill progress |
-| Product Price | UP, DOWN, FLAT | Price changes |
-| News | NEW, UPDATE, SAME | News developments |
+- `GET /run` runs the prompt digest immediately
+- `GET /prompts` returns the active prompt markdown
+- `POST /update-prompts` replaces the stored prompt markdown
+- `GET /test` sends a test Slack message
 
 ## Slack Webhook
 
