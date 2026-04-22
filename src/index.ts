@@ -1,4 +1,4 @@
-import { parsePrompts, getStoredResult, setStoredResult } from "./prompts";
+import { parsePrompts, setStoredResult } from "./prompts";
 import type { PromptConfig, PromptResult } from "./prompts";
 import { sendToSlack, formatPromptDigestMessage } from "./slack";
 import { getAnswer } from "./ai";
@@ -32,10 +32,6 @@ function getTodayLabel(): string {
   });
 }
 
-function normalizeAnswer(answer: string): string {
-  return answer.replace(/\s+/g, " ").trim();
-}
-
 function isAuthorized(request: Request, env: Env): boolean {
   const url = new URL(request.url);
   const providedKey = request.headers.get("x-api-key") || url.searchParams.get("key");
@@ -55,16 +51,6 @@ async function runPrompt(prompt: PromptConfig, env: Env): Promise<PromptResult> 
   };
 
   if (env.TOPICS) {
-    const previous = await getStoredResult(env.TOPICS, result.topic);
-    const normalized = normalizeAnswer(result.result);
-    const previousNormalized = previous ? normalizeAnswer(previous.result) : "";
-
-    if (!previous || previousNormalized !== normalized) {
-      console.log(`Answer changed for ${result.topic}`);
-    } else {
-      console.log(`Answer unchanged for ${result.topic}`);
-    }
-
     await setStoredResult(env.TOPICS, result);
   }
 

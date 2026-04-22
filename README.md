@@ -43,7 +43,7 @@ npm run deploy
 
 ## Prompt Configuration
 
-Edit `prompts.md` to add/edit/remove Brave Answers prompts:
+Edit `prompts.md` to change the bundled fallback prompt set:
 
 ```markdown
 ## Prompt Name
@@ -51,7 +51,12 @@ Edit `prompts.md` to add/edit/remove Brave Answers prompts:
 - topic: DDR5 RAM
 ```
 
-After editing `prompts.md`, push it to KV with `POST /update-prompts` and a JSON body containing `prompts`.
+Config precedence:
+- The worker first checks KV key `prompts_config`
+- If that key is missing, it falls back to the bundled `prompts.md` content in the deployed code
+
+Updating `prompts.md` changes the fallback used on the next deploy.
+Updating KV through `POST /update-prompts` changes the active runtime config immediately.
 
 All HTTP endpoints require an API key. Pass it either as the `x-api-key` header or `?key=` query parameter.
 
@@ -67,7 +72,7 @@ curl -H "x-api-key: YOUR_API_KEY" https://your-worker.workers.dev/run
 # Inspect the active prompt config
 curl -H "x-api-key: YOUR_API_KEY" https://your-worker.workers.dev/prompts
 
-# Update the stored prompt config
+# Update the active prompt config in KV immediately
 curl -X POST https://your-worker.workers.dev/update-prompts \
   -H "Content-Type: application/json" \
   -H "x-api-key: YOUR_API_KEY" \
@@ -114,13 +119,6 @@ crons = ["0 15 * * *"]  # 3 PM UTC = 8 AM MST
 
 ## Notes
 
-- Brave Answers requests are driven by `prompts.md` or the stored `prompts_config` KV value
+- Active prompts come from KV key `prompts_config` when present, otherwise from bundled `prompts.md`
 - Cron runs at 15:00 UTC (8:00 AM MST)
 - Prompts are parsed from markdown (comments `<!-- -->` are ignored)
-
----
-
-<p align="center">
-  Vibe coded by <a href="https://opencode.ai">OpenCode</a><br>
-  <sub>Powered by Big Pickle</sub>
-</p>

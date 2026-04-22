@@ -8,4 +8,4 @@ Configure queries to Brave Answers below.
 
 ## Arizona HB 2809
 - query: Reply in exactly one sentence, 25 words or fewer, with no preamble: what changed with Arizona bill HB 2809 over the last week?
-- topic: AZ HB2809
+- topic: AZ HB 2809

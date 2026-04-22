@@ -10,26 +10,7 @@ Cloudflare Worker that runs a daily prompt-driven digest and sends Brave Answers
 Cloudflare Cron → Worker → Brave Answers → Slack
 ```
 
-Prompt definitions are stored in KV with a bundled `prompts.md` fallback.
-
-## Setup
-
-```bash
-# 1. Install dependencies
-npm install
-
-# 2. Log in and create KV
-npx wrangler login
-npx wrangler kv:namespace create TOPICS
-
-# 3. Configure Worker secrets
-npx wrangler secret put SLACK_WEBHOOK_URL
-npx wrangler secret put BRAVE_ANSWERS_API_KEY
-npx wrangler secret put API_KEY
-
-# 4. Deploy
-npx wrangler deploy
-```
+Runtime prompt definitions come from KV key `prompts_config`, with bundled `prompts.md` as the deploy-time fallback.
 
 ## Files
 
@@ -54,6 +35,8 @@ npx wrangler deploy
 - `GET /prompts` returns the active prompt markdown
 - `POST /update-prompts` replaces the stored prompt markdown
 - `GET /test` sends a test Slack message
+
+All HTTP endpoints require `API_KEY`. The scheduled cron trigger does not.
 
 ## Slack Webhook
 

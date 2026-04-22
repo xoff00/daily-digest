@@ -76,22 +76,6 @@ export function parsePrompts(markdown: string): PromptConfig[] {
   return prompts;
 }
 
-export async function getStoredResult(
-  kv: KVNamespace,
-  topic: string
-): Promise<PromptResult | null> {
-  const key = `result:${topic}`;
-  const stored = await kv.get(key);
-  if (stored) {
-    try {
-      return JSON.parse(stored) as PromptResult;
-    } catch {
-      return null;
-    }
-  }
-  return null;
-}
-
 export async function setStoredResult(
   kv: KVNamespace,
   result: PromptResult
