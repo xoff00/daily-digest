@@ -18,7 +18,7 @@ export async function getAnswer(
   });
 
   if (!response.ok) {
-    console.error("Brave Answers API error:", response.status, await response.text());
+    console.error("Brave Answers API error:", response.status, response.statusText);
     throw new Error("Failed to get answer from Brave Answers");
   }
 

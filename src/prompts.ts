@@ -10,6 +10,11 @@ export interface PromptResult {
   timestamp: string;
 }
 
+const MAX_PROMPT_COUNT = 25;
+const MAX_NAME_LENGTH = 120;
+const MAX_TOPIC_LENGTH = 120;
+const MAX_QUERY_LENGTH = 2000;
+
 function parsePromptFromMarkdown(lines: string[], startIndex: number): PromptConfig | null {
   let name = "";
   const config: Record<string, string> = {};
@@ -74,6 +79,50 @@ export function parsePrompts(markdown: string): PromptConfig[] {
   }
 
   return prompts;
+}
+
+export function validatePromptMarkdown(markdown: string): string | null {
+  if (!markdown.trim()) {
+    return "Prompts markdown cannot be empty";
+  }
+
+  if (markdown.length > 20000) {
+    return "Prompts markdown exceeds 20000 characters";
+  }
+
+  const prompts = parsePrompts(markdown);
+
+  if (prompts.length === 0) {
+    return "Prompts markdown must include at least one valid prompt";
+  }
+
+  if (prompts.length > MAX_PROMPT_COUNT) {
+    return `Prompts markdown exceeds ${MAX_PROMPT_COUNT} prompts`;
+  }
+
+  for (const prompt of prompts) {
+    if (!prompt.name.trim()) {
+      return "Prompt name cannot be empty";
+    }
+
+    if (prompt.name.length > MAX_NAME_LENGTH) {
+      return `Prompt name exceeds ${MAX_NAME_LENGTH} characters`;
+    }
+
+    if (!prompt.query.trim()) {
+      return `Prompt query is missing for ${prompt.name}`;
+    }
+
+    if (prompt.query.length > MAX_QUERY_LENGTH) {
+      return `Prompt query exceeds ${MAX_QUERY_LENGTH} characters for ${prompt.name}`;
+    }
+
+    if (prompt.topic && prompt.topic.length > MAX_TOPIC_LENGTH) {
+      return `Prompt topic exceeds ${MAX_TOPIC_LENGTH} characters for ${prompt.name}`;
+    }
+  }
+
+  return null;
 }
 
 export async function setStoredResult(

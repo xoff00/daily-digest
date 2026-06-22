@@ -1,4 +1,4 @@
-import { parsePrompts, setStoredResult } from "./prompts";
+import { parsePrompts, setStoredResult, validatePromptMarkdown } from "./prompts";
 import type { PromptConfig, PromptResult } from "./prompts";
 import { sendToSlack, formatPromptDigestMessage } from "./slack";
 import { getAnswer } from "./ai";
@@ -37,8 +37,7 @@ function getTodayLabel(): string {
 }
 
 function isAuthorized(request: Request, env: Env): boolean {
-  const url = new URL(request.url);
-  const providedKey = request.headers.get("x-api-key") || url.searchParams.get("key");
+  const providedKey = request.headers.get("x-api-key");
   return Boolean(providedKey && providedKey === env.API_KEY);
 }
 
@@ -63,6 +62,12 @@ async function runPrompt(prompt: PromptConfig, env: Env): Promise<PromptResult> 
 
 async function processAllPrompts(env: Env): Promise<PromptResult[]> {
   const promptsMarkdown = await getPromptMarkdown(env);
+  const validationError = validatePromptMarkdown(promptsMarkdown);
+
+  if (validationError) {
+    throw new Error(`Invalid prompt configuration: ${validationError}`);
+  }
+
   const prompts = parsePrompts(promptsMarkdown);
 
   console.log(`Processing ${prompts.length} prompt(s)`);
@@ -110,6 +115,14 @@ export default {
       try {
         const body = await request.json() as { prompts?: string };
         if (body.prompts && env.TOPICS) {
+          const validationError = validatePromptMarkdown(body.prompts);
+          if (validationError) {
+            return new Response(JSON.stringify({ error: validationError }), {
+              status: 400,
+              headers: { "Content-Type": "application/json" },
+            });
+          }
+
           await env.TOPICS.put("prompts_config", body.prompts);
           return new Response(JSON.stringify({ success: true, message: "Prompts updated" }), {
             headers: { "Content-Type": "application/json" },

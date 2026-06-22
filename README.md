@@ -58,7 +58,7 @@ Config precedence:
 Updating `prompts.md` changes the fallback used on the next deploy.
 Updating KV through `POST /update-prompts` changes the active runtime config immediately.
 
-All HTTP endpoints require an API key. Pass it either as the `x-api-key` header or `?key=` query parameter.
+All HTTP endpoints require an API key in the `x-api-key` header.
 
 ## Testing
 
