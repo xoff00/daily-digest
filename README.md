@@ -1,6 +1,6 @@
 # Daily Digest Worker
 
-Cloudflare Worker that runs daily cron jobs, sends configured Brave Answers prompts, and posts the latest answers to Slack.
+Cloudflare Worker that supports a daily cron-driven digest, sends configured Brave Answers prompts, and posts the latest answers to Slack. The cron trigger is currently disabled.
 
 ## Setup
 
@@ -82,45 +82,54 @@ curl -X POST https://your-worker.workers.dev/update-prompts \
 npm run tail
 ```
 
-**Note:** The daily cron trigger calls `scheduled()` internally and does not require an API key. Every HTTP endpoint does.
+**Note:** The Worker is currently deployed without a daily cron trigger. Manual runs through `GET /run` still work. When enabled, the daily cron trigger calls `scheduled()` internally and does not require an API key. Every HTTP endpoint does.
 
 ## Cron Schedule
 
-Runs daily at 8:00 AM Arizona time (MST/UTC-7 = 15:00 UTC)
+The daily cron is currently disabled. When enabled, it runs daily at 8:00 AM Arizona time (MST/UTC-7 = 15:00 UTC).
 
-To change, edit `crons` in `wrangler.toml`:
+To re-enable it, restore the cron trigger in `wrangler.toml`:
 
 ```toml
 [triggers]
 crons = ["0 15 * * *"]  # 3 PM UTC = 8 AM MST
 ```
 
+Then redeploy the Worker:
+
+```bash
+npm run deploy
+```
+
+After deploy, confirm the trigger is present in Cloudflare or via Wrangler.
+
 ## Runtime Behavior
 
-- Runs each configured prompt once per day from the Worker cron trigger
+- When the cron trigger is enabled, runs each configured prompt once per day
 - Sends the latest answer for every configured prompt to Slack
 - Stores the latest result for each prompt in KV for inspection and future comparisons
-- All HTTP endpoints require `API_KEY`; only the scheduled cron trigger is unauthenticated
+- All HTTP endpoints require `API_KEY`; only the scheduled cron trigger is unauthenticated when enabled
 
 ## Project Structure
 
 ```
 .
 ├── src/
-│   ├── index.ts      # Worker entry point, cron handler
+│   ├── index.ts      # Worker entry point and scheduled handler
 │   ├── slack.ts      # Slack message formatting & delivery
 │   ├── ai.ts         # Brave Answers API helpers
 │   └── prompts.ts    # Prompt parsing & result storage
 ├── prompts.md        # Editable prompt configuration
 ├── .dev.vars.example # Local secret template (not committed as live secrets)
-├── wrangler.toml     # Worker config with cron trigger
+├── wrangler.toml     # Worker config; cron trigger currently disabled
 └── package.json
 ```
 
 ## Notes
 
 - Active prompts come from KV key `prompts_config` when present, otherwise from bundled `prompts.md`
-- Cron runs at 15:00 UTC (8:00 AM MST)
+- Cron is currently disabled
+- When enabled, cron runs at 15:00 UTC (8:00 AM MST)
 - Prompts are parsed from markdown (comments `<!-- -->` are ignored)
 
 ---
